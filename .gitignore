@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OpenClaw
+.openclaw/
+
+# Temporary files
+*.pkl
+*.tmp
+
+# Credentials (safety check)
+openclaw.json
+credentials.json
+.env
+
+# macOS
+.DS_Store

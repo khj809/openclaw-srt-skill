@@ -1,0 +1,13 @@
+{
+  "skills": {
+    "entries": {
+      "srt": {
+        "enabled": true,
+        "config": {
+          "phone": "010-1234-5678",
+          "password": "your_srt_password_here"
+        }
+      }
+    }
+  }
+}
