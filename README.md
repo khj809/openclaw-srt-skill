@@ -150,6 +150,8 @@ For issues or questions:
 - Check [SKILL.md](SKILL.md) for troubleshooting
 - Visit SRT website: https://etk.srail.kr
 
-## Version
+## Version History
 
-**1.0.0** - Initial release (February 2026)
+- **0.1.2** - Add `--all` flag for sold-out trains
+- **0.1.1** - Use `uv` for dependency management
+- **0.1.0** - Initial release (February 2026)

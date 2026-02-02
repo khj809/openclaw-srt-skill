@@ -430,7 +430,7 @@ clawhub login
 clawhub publish . \
   --slug srt \
   --name "SRT Korean Train Service" \
-  --version 1.0.0 \
+  --version 0.1.2 \
   --tags latest
 ```
 
@@ -446,7 +446,12 @@ For issues or questions:
 
 ## Version History
 
-- **1.0.0** - Initial release
+- **0.1.2** - Add `--all` flag for sold-out trains
+  - Search now supports `--all` to include sold-out trains (passes `available_only=False`)
+- **0.1.1** - Use `uv` for dependency management
+  - Replace venv/pip with `uv run --with SRTrain`
+  - Environment variables only for credentials (remove config file support)
+- **0.1.0** - Initial release
   - Search trains
   - Make reservations
   - View bookings
