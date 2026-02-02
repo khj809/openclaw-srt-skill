@@ -78,7 +78,7 @@ The AI can invoke this skill based on user intent:
 
 ```bash
 # Search trains
-python3 scripts/srt_cli.py search \
+uv run --with SRTrain python3 scripts/srt_cli.py search \
   --departure "수서" \
   --arrival "부산" \
   --date "20260217" \
@@ -86,13 +86,13 @@ python3 scripts/srt_cli.py search \
   --passengers "adult=2"
 
 # Make reservation (uses train ID from search results)
-python3 scripts/srt_cli.py reserve --train-id "1"
+uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
 
 # View bookings
-python3 scripts/srt_cli.py list --format json
+uv run --with SRTrain python3 scripts/srt_cli.py list --format json
 
 # Cancel booking
-python3 scripts/srt_cli.py cancel \
+uv run --with SRTrain python3 scripts/srt_cli.py cancel \
   --reservation-id "RES123456" \
   --confirm
 ```
@@ -132,7 +132,7 @@ Search for available trains between stations.
 
 **Usage:**
 ```bash
-python3 scripts/srt_cli.py search \
+uv run --with SRTrain python3 scripts/srt_cli.py search \
   --departure "수서" \
   --arrival "부산" \
   --date "20260217" \
@@ -167,7 +167,7 @@ Reserve a specific train from search results.
 
 **Usage:**
 ```bash
-python3 scripts/srt_cli.py reserve --train-id "1"
+uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
 ```
 
 **Returns:** Reservation details with payment deadline
@@ -196,7 +196,7 @@ List all current reservations.
 
 **Usage:**
 ```bash
-python3 scripts/srt_cli.py list --format json
+uv run --with SRTrain python3 scripts/srt_cli.py list --format json
 ```
 
 **Returns:** JSON array of active reservations
@@ -225,7 +225,7 @@ Cancel a reservation by ID.
 
 **Usage:**
 ```bash
-python3 scripts/srt_cli.py cancel \
+uv run --with SRTrain python3 scripts/srt_cli.py cancel \
   --reservation-id "RES123456" \
   --confirm
 ```
@@ -408,17 +408,16 @@ After making a reservation:
 
 ```bash
 # Install dependencies
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Install uv if not already installed
+# https://docs.astral.sh/uv/getting-started/installation/
 
 # Configure credentials
 export SRT_PHONE="010-1234-5678"
 export SRT_PASSWORD="your_password"
 
 # Test commands
-python3 scripts/srt_cli.py search --departure "수서" --arrival "부산" --date "20260203" --time "140000"
-python3 scripts/srt_cli.py list
+uv run --with SRTrain python3 scripts/srt_cli.py search --departure "수서" --arrival "부산" --date "20260203" --time "140000"
+uv run --with SRTrain python3 scripts/srt_cli.py list
 ```
 
 ### Publishing to ClawHub

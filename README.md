@@ -105,16 +105,15 @@ git clone <repository-url>
 cd clawhub-srt-skill
 
 # Install dependencies
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Install uv if not already installed
+# https://docs.astral.sh/uv/getting-started/installation/
 
 # Configure credentials
 export SRT_PHONE="010-1234-5678"
 export SRT_PASSWORD="your_password"
 
 # Test commands
-python3 scripts/srt_cli.py search --departure "수서" --arrival "부산" --date "20260203" --time "140000"
+uv run --with SRTrain python3 scripts/srt_cli.py search --departure "수서" --arrival "부산" --date "20260203" --time "140000"
 ```
 
 ### Project Structure
