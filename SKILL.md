@@ -8,7 +8,7 @@ metadata:
     "openclaw":
       {
         "emoji": "🚅",
-        "requires": { "bins": ["python3"] },
+        "requires": { "bins": ["python3", "uv"] },
         "install": [
           {"id": "uv", "kind": "uv", "package": "SRTrain", "label": "Install SRTrain (uv)"}
         ]
