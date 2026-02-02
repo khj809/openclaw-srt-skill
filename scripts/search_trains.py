@@ -42,11 +42,13 @@ def search_trains(credentials, args):
     srt = SRT(credentials['phone'], credentials['password'])
 
     # Search trains
+    available_only = not getattr(args, 'all', False)
     trains = srt.search_train(
         dep=args.departure,
         arr=args.arrival,
         date=args.date,
-        time=args.time
+        time=args.time,
+        available_only=available_only
     )
 
     # Record search
@@ -112,6 +114,7 @@ def main():
     parser.add_argument('--date', required=True, help="날짜 (YYYYMMDD, 예: 20260217)")
     parser.add_argument('--time', required=True, help="시간 (HHMMSS, 예: 140000)")
     parser.add_argument('--passengers', help="승객 수 (예: adult=2, default=1)")
+    parser.add_argument('--all', action='store_true', help="매진 포함 전체 열차 표시")
     run(parser.parse_args())
 
 

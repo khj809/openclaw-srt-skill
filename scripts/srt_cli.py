@@ -28,6 +28,7 @@ def main():
     search_parser.add_argument('--date', required=True, help='날짜 (YYYYMMDD)')
     search_parser.add_argument('--time', required=True, help='시간 (HHMMSS)')
     search_parser.add_argument('--passengers', help='승객 수 (예: adult=2)')
+    search_parser.add_argument('--all', action='store_true', help='매진 포함 전체 열차 표시')
 
     # Reserve command
     reserve_parser = subparsers.add_parser('reserve', help='열차 예약')
