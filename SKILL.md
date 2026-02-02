@@ -1,13 +1,19 @@
 ---
 name: srt
 description: Korean SRT (Super Rapid Train) search, reservation, and booking management
+homepage: https://github.com/khj809/openclaw-srt-skill
 user-invocable: true
-requires:
-  bins:
-    - python3
-  config:
-    - skills.entries.srt.config.phone
-    - skills.entries.srt.config.password
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🚅",
+        "requires": { "bins": ["python3"] },
+        "install": [
+          {"id": "python", "kind": "pip", "package": "SRTrain", "bins": [], "label": "Install SRTrain (pip)" }
+        ]
+      },
+  }
 ---
 
 # SRT Korean Train Service Skill
