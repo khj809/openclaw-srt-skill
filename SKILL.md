@@ -38,36 +38,18 @@ OpenClaw skill for managing Korean SRT (Super Rapid Train) reservations with sea
 
 ## Configuration
 
-Add your SRT credentials to `~/.openclaw/openclaw.json`:
+Set your SRT credentials as environment variables:
 
-```json
-{
-  "skills": {
-    "entries": {
-      "srt": {
-        "enabled": true,
-        "config": {
-          "phone": "010-1234-5678",
-          "password": "your_password"
-        }
-      }
-    }
-  }
-}
-```
-
-**Important:** Phone number must include hyphens in the format `010-XXXX-XXXX`
-
-**Alternative:** Set environment variables (takes priority over config file):
 ```bash
 export SRT_PHONE="010-1234-5678"
 export SRT_PASSWORD="your_password"
 ```
 
-**Security Note:** Ensure config file has proper permissions:
-```bash
-chmod 600 ~/.openclaw/openclaw.json
-```
+Add these to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) for persistence.
+
+**Security Note:** Avoid committing credentials to version control.
+
+**Important:** Phone number must include hyphens in the format `010-XXXX-XXXX`
 
 ## Usage
 
@@ -402,9 +384,9 @@ After making a reservation:
 ## Troubleshooting
 
 ### "SRT 인증 정보를 찾을 수 없습니다"
-- Check `~/.openclaw/openclaw.json` exists
-- Verify `skills.entries.srt.phone` and `skills.entries.srt.password` are set
-- Or set `SRT_PHONE` and `SRT_PASSWORD` environment variables
+- Verify `SRT_PHONE` and `SRT_PASSWORD` environment variables are set
+- Check your shell profile (`~/.zshrc`, `~/.bashrc`) has `export` keyword
+- Example: `export SRT_PHONE="010-1234-5678"`
 
 ### "검색 결과를 찾을 수 없습니다"
 - Run `search` command before `reserve`
@@ -431,7 +413,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Configure credentials
-# Edit ~/.openclaw/openclaw.json
+export SRT_PHONE="010-1234-5678"
+export SRT_PASSWORD="your_password"
 
 # Test commands
 python3 scripts/srt_cli.py search --departure "수서" --arrival "부산" --date "20260203" --time "140000"

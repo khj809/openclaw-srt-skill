@@ -21,28 +21,14 @@ OpenClaw skill for managing Korean SRT (Super Rapid Train) reservations with sea
 clawhub install srt
 ```
 
-2. **Configure credentials** in `~/.openclaw/openclaw.json`:
-```json
-{
-  "skills": {
-    "entries": {
-      "srt": {
-        "enabled": true,
-        "config": {
-          "phone": "010-1234-5678",
-          "password": "your_password"
-        }
-      }
-    }
-  }
-}
-```
-**Important:** Phone number must include hyphens (e.g., `010-1234-5678`)
-
-3. **Set file permissions:**
+2. **Set environment variables:**
 ```bash
-chmod 600 ~/.openclaw/openclaw.json
+export SRT_PHONE="010-1234-5678"
+export SRT_PASSWORD="your_password"
 ```
+Add to your shell profile (`~/.zshrc`, `~/.bashrc`) for persistence.
+
+**Important:** Phone number must include hyphens (e.g., `010-1234-5678`)
 
 ### Usage Examples
 
@@ -124,7 +110,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Configure credentials
-# Edit ~/.openclaw/openclaw.json
+export SRT_PHONE="010-1234-5678"
+export SRT_PASSWORD="your_password"
 
 # Test commands
 python3 scripts/srt_cli.py search --departure "수서" --arrival "부산" --date "20260203" --time "140000"

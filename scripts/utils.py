@@ -112,69 +112,36 @@ def check_attempt_limit(limiter, max_attempts=10):
 
 def load_credentials():
     """
-    Load SRT credentials from environment or config file.
-    Priority: Environment variables > Config file
+    Load SRT credentials from environment variables.
+
+    Required environment variables:
+        SRT_PHONE: SRT account phone number (e.g., 010-1234-5678)
+        SRT_PASSWORD: SRT account password
 
     Returns:
         dict: {'phone': str, 'password': str}
 
     Raises:
-        Exception: If credentials cannot be loaded
+        Exception: If credentials are not set
     """
-    # Try environment variables first
     phone = os.environ.get('SRT_PHONE')
     password = os.environ.get('SRT_PASSWORD')
 
-    if phone and password:
-        return {'phone': phone, 'password': password}
-
-    # Try config file
-    config_path = Path.home() / '.openclaw' / 'openclaw.json'
-
-    if not config_path.exists():
+    if not phone or not password:
+        missing = []
+        if not phone:
+            missing.append('SRT_PHONE')
+        if not password:
+            missing.append('SRT_PASSWORD')
         raise Exception(
-            "SRT 인증 정보를 찾을 수 없습니다.\n"
-            "다음 중 하나의 방법으로 설정해주세요:\n"
-            "1. 환경 변수: SRT_PHONE, SRT_PASSWORD\n"
-            "   예: export SRT_PHONE=\"010-1234-5678\"\n"
-            "2. 설정 파일: ~/.openclaw/openclaw.json\n"
-            "   예시:\n"
-            "   {\n"
-            '     "skills": {\n'
-            '       "entries": {\n'
-            '         "srt": {\n'
-            '           "enabled": true,\n'
-            '           "config": {\n'
-            '             "phone": "010-1234-5678",\n'
-            '             "password": "your_password"\n'
-            "           }\n"
-            "         }\n"
-            "       }\n"
-            "     }\n"
-            "   }\n"
-            "   주의: 전화번호는 하이픈 포함 (010-1234-5678)"
+            f"SRT 인증 정보를 찾을 수 없습니다.\n"
+            f"다음 환경 변수를 설정해주세요: {', '.join(missing)}\n"
+            f"예:\n"
+            f"  export SRT_PHONE=\"010-1234-5678\"\n"
+            f"  export SRT_PASSWORD=\"your_password\""
         )
 
-    try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-
-        srt_entry = config.get('skills', {}).get('entries', {}).get('srt', {})
-        srt_config = srt_entry.get('config', {})
-        phone = srt_config.get('phone')
-        password = srt_config.get('password')
-
-        if not phone or not password:
-            raise KeyError
-
-        return {'phone': phone, 'password': password}
-
-    except (json.JSONDecodeError, KeyError):
-        raise Exception(
-            "SRT 설정을 읽을 수 없습니다.\n"
-            "~/.openclaw/openclaw.json 파일을 확인해주세요.\n"
-            "skills.entries.srt.config.phone 과 skills.entries.srt.config.password 가 필요합니다."
-        )
+    return {'phone': phone, 'password': password}
 
 
 def handle_error(error, context=""):
