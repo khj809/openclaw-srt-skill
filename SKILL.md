@@ -10,7 +10,7 @@ metadata:
         "emoji": "🚅",
         "requires": { "bins": ["python3"] },
         "install": [
-          {"id": "python", "kind": "pip", "package": "SRTrain", "bins": [], "label": "Install SRTrain (pip)" }
+          {"id": "uv", "kind": "uv", "package": "SRTrain", "label": "Install SRTrain (uv)"}
         ]
       },
   }
