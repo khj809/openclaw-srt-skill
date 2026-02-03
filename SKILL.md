@@ -60,6 +60,9 @@ Use the `/srt` slash command in OpenClaw:
 ```
 /srt search --departure "수서" --arrival "부산" --date "20260217" --time "140000"
 /srt reserve --train-id "1"
+/srt reserve --retry --timeout-minutes 60
+/srt reserve --retry --train-id "1,3,5" --timeout-minutes 60
+/srt log -n 30
 /srt list
 /srt cancel --reservation-id "RES123456"
 ```
@@ -85,8 +88,22 @@ uv run --with SRTrain python3 scripts/srt_cli.py search \
   --time "140000" \
   --passengers "adult=2"
 
-# Make reservation (uses train ID from search results)
+# Make reservation (single attempt)
 uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
+
+# Make reservation with automatic retry - all trains (background mode recommended)
+uv run --with SRTrain python3 scripts/srt_cli.py reserve --retry \
+  --timeout-minutes 60 \
+  --wait-seconds 10
+
+# Make reservation with automatic retry - specific trains only
+uv run --with SRTrain python3 scripts/srt_cli.py reserve --retry \
+  --train-id "1,3,5" \
+  --timeout-minutes 60 \
+  --wait-seconds 10
+
+# Check reservation log
+uv run --with SRTrain python3 scripts/srt_cli.py log -n 30
 
 # View bookings
 uv run --with SRTrain python3 scripts/srt_cli.py list --format json
@@ -125,7 +142,7 @@ uv run --with SRTrain python3 scripts/srt_cli.py cancel \
 
 ## Tools for AI Agent
 
-This skill provides 4 tools for managing SRT train reservations:
+This skill provides 5 tools for managing SRT train reservations:
 
 ### 1. search_trains
 Search for available trains between stations.
@@ -163,12 +180,38 @@ uv run --with SRTrain python3 scripts/srt_cli.py search \
 ```
 
 ### 2. make_reservation
-Reserve a specific train from search results.
+Reserve trains with optional automatic retry support.
 
-**Usage:**
+**Usage (single attempt):**
 ```bash
 uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
 ```
+
+**Usage (with retry):**
+```bash
+# Try all trains
+uv run --with SRTrain python3 scripts/srt_cli.py reserve --retry \
+  --timeout-minutes 60 \
+  --wait-seconds 10
+
+# Try specific trains only
+uv run --with SRTrain python3 scripts/srt_cli.py reserve --retry \
+  --train-id "1,3,5" \
+  --timeout-minutes 60 \
+  --wait-seconds 10
+```
+
+**Options:**
+- `--train-id`: Specific train(s) to reserve (comma-separated, e.g., "1" or "1,3,5"; omit to try all trains)
+- `--retry`: Enable automatic retry on failure
+- `--timeout-minutes`: Maximum retry duration in minutes (default: 60)
+- `--wait-seconds`: Wait time between retry attempts in seconds (default: 10)
+
+**Behavior with --retry:**
+1. Cycles through all available trains from search results
+2. Waits `--wait-seconds` between attempts (plus rate-limiting delays)
+3. Continues until success or timeout
+4. Logs progress to `~/.openclaw/tmp/srt/reserve.log`
 
 **Returns:** Reservation details with payment deadline
 
@@ -184,12 +227,15 @@ uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
     "arrival": "부산",
     "train_number": "301",
     "seat_number": "3A",
-    "payment_required": true
+    "payment_required": true,
+    "attempts": 12
   }
 }
 ```
 
-**Note:** Payment must be completed manually by user via SRT app/website.
+**Note:** 
+- Payment must be completed manually by user via SRT app/website
+- For retry mode, run in background with exec tool and periodically check logs
 
 ### 3. view_bookings
 List all current reservations.
@@ -242,6 +288,34 @@ uv run --with SRTrain python3 scripts/srt_cli.py cancel \
     "message": "Reservation cancelled successfully"
   }
 }
+```
+
+### 5. check_log
+Check the progress of reservation attempts (especially useful for retry mode).
+
+**Usage:**
+```bash
+uv run --with SRTrain python3 scripts/srt_cli.py log -n 30
+```
+
+**Returns:** Last N lines of reservation log file (`~/.openclaw/tmp/srt/reserve.log`)
+
+**Options:**
+- `-n, --lines`: Number of lines to show (default: 20)
+
+**Log Format Example:**
+```
+[2026-02-03 11:00:00] INFO: === SRT 예약 시작 (재시도 모드) ===
+[2026-02-03 11:00:00] INFO: 타임아웃: 60분
+[2026-02-03 11:00:00] INFO: 재시도 간격: 10초
+[2026-02-03 11:00:00] INFO: 대상 열차: 1,3,5 (총 3개)
+[2026-02-03 11:00:05] INFO: === 시도 #1 (열차 1/3) ===
+[2026-02-03 11:00:05] INFO: 🎫 예약 시도 중... (열차 301, 120500)
+[2026-02-03 11:00:06] WARN: ❌ 좌석 없음 (열차 301)
+[2026-02-03 11:00:06] INFO: ⏳ 10초 대기 후 재시도...
+[2026-02-03 11:00:26] INFO: === 시도 #2 (열차 2/3) ===
+...
+[2026-02-03 11:05:00] SUCCESS: ✅ 예약 성공!
 ```
 
 ## Error Handling
@@ -337,10 +411,10 @@ When users make requests in Korean, the AI should:
 4. Reserve train
 5. Confirm with payment reminder
 
-### Scenario 2: Retry Until Success
+### Scenario 2: Retry Until Success (Old Method - Not Recommended)
 **User:** "매진이면 성공할때까지 반복해"
 
-**AI Actions:**
+**AI Actions (Old):**
 1. Search trains
 2. Loop through available trains:
    - Try to reserve
@@ -348,6 +422,220 @@ When users make requests in Korean, the AI should:
    - Try next train
    - Max 10 attempts
 3. Report success or exhaustion
+
+**Problem:** AI has to invoke CLI repeatedly, wasting tokens and session resources.
+
+### Scenario 2-B: Retry Until Success (New Method - Recommended)
+**User:** "매진이면 성공할때까지 반복해"
+
+**AI Actions (New - with Cron Job):**
+1. Search trains
+2. Start background retry process:
+   ```bash
+   exec reserve --retry --timeout-minutes 60 --wait-seconds 10 (in background)
+   ```
+3. **Immediately create cron job for monitoring (MANDATORY):**
+   ```bash
+   cron add \
+     --schedule "every 2m" \
+     --systemEvent "Check SRT retry: srt_cli.py log -n 30 and report progress" \
+     --cleanup delete
+   ```
+4. Inform user that monitoring is active:
+   ```
+   "백그라운드로 예약 재시도를 시작했습니다.
+   타임아웃: 60분, 재시도 간격: 10초
+   2분마다 진행 상황을 자동으로 확인해서 알려드리겠습니다."
+   ```
+
+**Cron Job Behavior:**
+- Fires every 2 minutes automatically
+- Each time: checks log, reports progress immediately
+- On completion: reports final result and deletes itself
+- No blocking, no message batching
+
+**Benefits:**
+- ✅ AI never blocks (can respond to other messages)
+- ✅ Messages sent immediately by cron job
+- ✅ No Discord streaming issues
+- ✅ Quick detection of success
+- ✅ Automatic cleanup when done
+- ✅ Token efficient (cron job is isolated)
+
+## ⚠️ CRITICAL: Real-Time Monitoring Requirements
+
+**When using `reserve --retry` in background, you MUST report status updates in real-time!**
+
+### 🚨 The Problem
+
+If you check logs but don't send messages until all checks are done, users see nothing until the process completes. This creates:
+- Silent periods of 5-60 minutes
+- No feedback on progress
+- User frustration ("왜 답이 없어?")
+
+### 🔴 MANDATORY: Use Cron Jobs for Monitoring
+
+**AI agents MUST NOT use blocking wait or manual loops for monitoring.**
+
+**WHY:**
+- Blocking wait prevents you from responding to users
+- Manual loops batch messages instead of sending immediately
+- Discord streaming issues may delay message delivery
+
+**SOLUTION: Always use cron jobs**
+
+```bash
+# 1. Start background retry process
+exec reserve --retry --timeout-minutes 60 (background)
+
+# 2. Immediately create cron job for monitoring
+cron add \
+  --schedule "every 2m" \
+  --systemEvent "Check SRT retry log and report progress" \
+  --cleanup delete
+
+# 3. Tell user monitoring is active
+"백그라운드로 예약 재시도를 시작했습니다. 2분마다 진행 상황을 알려드리겠습니다."
+```
+
+**Cron job schedule:**
+- **<15 min tasks:** every 1-2 minutes
+- **15-60 min tasks:** every 2-3 minutes
+- **>60 min tasks:** every 5 minutes
+
+**The cron job should:**
+1. Check retry log with `srt_cli.py log -n 30`
+2. Parse latest attempts, success/failure
+3. Report progress immediately to user
+4. Detect completion and send final result
+5. Delete itself when task completes
+
+### ✅ The Correct Pattern
+
+**WRONG ❌:**
+```
+Check at 1 min → (store result)
+Check at 2 min → (store result)
+Check at 3 min → (store result)
+Process ends → Send ALL results at once
+```
+
+**WRONG ❌:**
+```python
+# Manual loop - DON'T DO THIS
+for i in range(5):
+    sleep(60)
+    check_log()
+    # Messages get batched!
+```
+
+**RIGHT ✅:**
+```
+Setup cron job (every 2 min)
+  ↓
+Cron fires at 2 min → Check log → SEND MESSAGE → wait
+  ↓
+Cron fires at 4 min → Check log → SEND MESSAGE → wait
+  ↓
+Cron fires at 6 min → Detect completion → SEND FINAL RESULT → Delete cron
+```
+
+### 📋 Required Message Pattern
+
+**For 5-minute retry tasks:**
+
+```markdown
+[0 min - 12:20] Starting retry for trains 1-9, timeout 5 minutes
+
+[1 min - 12:21] Progress: 6 attempts, all sold out, continuing...
+
+[2 min - 12:22] Progress: 12 attempts, still sold out, 3 min left
+
+[3 min - 12:23] Progress: 18 attempts, all sold out, 2 min left
+
+[4 min - 12:24] Progress: 24 attempts, still sold out, 1 min left
+
+[5 min - 12:25] ⏰ TIMEOUT: 30 attempts total, all failed
+```
+
+**Each message must:**
+1. Include timestamp
+2. Show attempt count
+3. Indicate time remaining
+4. Be sent IMMEDIATELY after check (not batched)
+
+### 🔧 Implementation
+
+**Use cron job (MANDATORY):**
+```bash
+# 1. Start background process
+exec reserve --retry --timeout-minutes 60 (background)
+
+# 2. Create cron job immediately
+cron add \
+  --schedule "every 2m" \
+  --systemEvent "Check SRT retry log and report status" \
+  --cleanup delete
+
+# 3. Inform user
+"백그라운드 예약 재시도 시작. 2분마다 자동 업데이트합니다."
+```
+
+**Cron job systemEvent should:**
+```bash
+# Check latest log
+srt_cli.py log -n 30
+
+# Parse and report immediately:
+# - Attempt count
+# - Success/failure status
+# - Time remaining (if known)
+
+# If completed:
+# - Report final result
+# - Delete this cron job
+```
+
+**Never do this:**
+```python
+# WRONG - Manual loop with blocking
+for minute in [1, 2, 3, 4, 5]:
+    sleep(60)
+    check_log()
+    # Messages get batched!
+
+# WRONG - Storing results
+results = []
+for minute in [1, 2, 3, 4, 5]:
+    results.append(check_log())
+send_all_messages(results)  # All at once - BAD!
+```
+
+### 📝 Summary
+
+**MANDATORY for all background retry tasks:**
+
+1. **Use cron jobs, never manual loops**
+   - Schedule: every 1-3 minutes depending on task length
+   - Cron job automatically sends messages (no batching)
+   - AI never blocks, can respond to other requests
+
+2. **Monitoring schedule:**
+   - <15 min tasks: cron every 1-2 minutes
+   - 15-60 min tasks: cron every 2-3 minutes
+   - >60 min tasks: cron every 5 minutes
+
+3. **Each cron job execution:**
+   - Check log → Report immediately
+   - If completed → Final report + delete cron
+
+4. **Never:**
+   - Blocking wait loops
+   - Manual sleep() intervals
+   - Batching messages
+   - Assuming "it'll be fine"
+
+**If you don't set up a cron job, you WILL go silent. No exceptions.**
 
 ### Scenario 3: Check and Cancel
 **User:** "내 예약 확인해주고 제일 빠른거 취소해줘"
@@ -446,8 +734,17 @@ For issues or questions:
 
 ## Version History
 
-- **0.1.2** - Add `--all` flag for sold-out trains
-  - Search now supports `--all` to include sold-out trains (passes `available_only=False`)
+- **0.1.4** - Major improvements to retry and monitoring
+  - Unified `reserve` command with `--retry` flag (removed separate `reserve-retry` command)
+  - Added `--timeout-minutes` for time-based retry limits (default: 60)
+  - Added `--train-id` support for comma-separated multiple trains (e.g., "1,3,5")
+  - Changed `--wait-seconds` default from 20 to 10 seconds
+  - **⚠️ CRITICAL:** Added real-time monitoring requirements for AI agents
+  - Detailed AI monitoring guide with correct/incorrect patterns
+- **0.1.3** - Include sold-out trains by default
+  - Search now includes sold-out trains by default (`available_only=False`)
+  - Removed `--all` flag (no longer needed)
+- **0.1.2** - Add `--all` flag for sold-out trains (deprecated)
 - **0.1.1** - Use `uv` for dependency management
   - Replace venv/pip with `uv run --with SRTrain`
   - Environment variables only for credentials (remove config file support)
