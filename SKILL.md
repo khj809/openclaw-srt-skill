@@ -434,12 +434,22 @@ When users make requests in Korean, the AI should:
    ```bash
    exec reserve --retry --timeout-minutes 60 --wait-seconds 10 (in background)
    ```
-3. **Immediately create cron job for monitoring (MANDATORY):**
+3. **Immediately create cron job for monitoring (MANDATORY - ISOLATED SESSION):**
    ```bash
-   cron add \
-     --schedule "every 2m" \
-     --systemEvent "Check SRT retry: srt_cli.py log -n 30 and report progress" \
-     --cleanup delete
+   cron add --job '{
+     "schedule": {"kind": "every", "everyMs": 120000},
+     "payload": {
+       "kind": "agentTurn",
+       "message": "Check SRT retry log and report progress to user",
+       "deliver": true,
+       "channel": "discord"
+     },
+     "sessionTarget": "isolated",
+     "enabled": true
+   }'
+   
+   # Wake immediately
+   cron wake --mode "now" --text "Start monitoring"
    ```
 4. Inform user that monitoring is active:
    ```
@@ -449,8 +459,9 @@ When users make requests in Korean, the AI should:
    ```
 
 **Cron Job Behavior:**
+- Runs in **isolated session** with **agentTurn** (actual agent execution)
 - Fires every 2 minutes automatically
-- Each time: checks log, reports progress immediately
+- Each time: checks log, reports progress immediately to user channel
 - On completion: reports final result and deletes itself
 - No blocking, no message batching
 
@@ -482,21 +493,47 @@ If you check logs but don't send messages until all checks are done, users see n
 - Manual loops batch messages instead of sending immediately
 - Discord streaming issues may delay message delivery
 
-**SOLUTION: Always use cron jobs**
+**SOLUTION: Always use cron jobs with isolated session + agentTurn**
 
 ```bash
 # 1. Start background retry process
 exec reserve --retry --timeout-minutes 60 (background)
 
-# 2. Immediately create cron job for monitoring
-cron add \
-  --schedule "every 2m" \
-  --systemEvent "Check SRT retry log and report progress" \
-  --cleanup delete
+# 2. Immediately create cron job for monitoring (ISOLATED SESSION + AGENTTURN)
+cron add --job '{
+  "schedule": {"kind": "every", "everyMs": 120000},
+  "payload": {
+    "kind": "agentTurn",
+    "message": "Check SRT retry progress: run `cd ~/.openclaw/workspace/skills/srt && uv run --with SRTrain python3 scripts/srt_cli.py log -n 30` and parse the latest attempts. Report to main session: (1) attempt count, (2) success/failure status, (3) time remaining if known. If process completed (timeout or success), report final result to main session and delete this cron job.",
+    "deliver": true,
+    "channel": "discord"
+  },
+  "sessionTarget": "isolated",
+  "enabled": true
+}'
 
-# 3. Tell user monitoring is active
-"백그라운드로 예약 재시도를 시작했습니다. 2분마다 진행 상황을 알려드리겠습니다."
+# 3. CRITICAL: Send wake event to trigger cron immediately
+cron wake --mode "now" --text "Start SRT monitoring"
+
+# 4. Tell user monitoring is active
+"백그라운드로 예약 재시도를 시작했습니다. 2분마다 진행 상황을 자동으로 확인해서 알려드리겠습니다."
 ```
+
+**⚠️ CRITICAL: Session Target and Payload Type**
+
+**MUST use:**
+- `sessionTarget: "isolated"` (NOT "main")
+- `payload.kind: "agentTurn"` (NOT "systemEvent")
+- `payload.deliver: true` to send results back to user
+- `payload.channel: "discord"` (or appropriate channel)
+
+**WHY:**
+- `systemEvent` in main session just injects text - AI doesn't act on it
+- `agentTurn` in isolated session creates actual agent execution
+- `deliver: true` ensures results are sent to the user channel
+
+**Wake Mode:**
+Cron jobs default to `wakeMode: "next-heartbeat"` - always call `cron wake --mode "now"` after creating the job to trigger it immediately.
 
 **Cron job schedule:**
 - **<15 min tasks:** every 1-2 minutes
@@ -566,35 +603,37 @@ Cron fires at 6 min → Detect completion → SEND FINAL RESULT → Delete cron
 
 ### 🔧 Implementation
 
-**Use cron job (MANDATORY):**
+**Use cron job with isolated session (MANDATORY):**
 ```bash
 # 1. Start background process
 exec reserve --retry --timeout-minutes 60 (background)
 
-# 2. Create cron job immediately
-cron add \
-  --schedule "every 2m" \
-  --systemEvent "Check SRT retry log and report status" \
-  --cleanup delete
+# 2. Create cron job immediately (ISOLATED + AGENTTURN)
+cron add --job '{
+  "schedule": {"kind": "every", "everyMs": 120000},
+  "payload": {
+    "kind": "agentTurn",
+    "message": "Check SRT retry: run log command, parse results, report to user. Delete cron if completed.",
+    "deliver": true,
+    "channel": "discord"
+  },
+  "sessionTarget": "isolated",
+  "enabled": true
+}'
 
-# 3. Inform user
+# 3. Wake immediately
+cron wake --mode "now" --text "Start monitoring"
+
+# 4. Inform user
 "백그라운드 예약 재시도 시작. 2분마다 자동 업데이트합니다."
 ```
 
-**Cron job systemEvent should:**
-```bash
-# Check latest log
-srt_cli.py log -n 30
-
-# Parse and report immediately:
-# - Attempt count
-# - Success/failure status
-# - Time remaining (if known)
-
-# If completed:
-# - Report final result
-# - Delete this cron job
-```
+**Cron job agentTurn should:**
+- Run `srt_cli.py log -n 30` to check progress
+- Parse: attempt count, success/failure, time remaining
+- Report immediately to user channel (deliver: true)
+- If completed: report final result + delete cron job
+- Agent executes in isolated session (no main session interference)
 
 **Never do this:**
 ```python
@@ -615,27 +654,30 @@ send_all_messages(results)  # All at once - BAD!
 
 **MANDATORY for all background retry tasks:**
 
-1. **Use cron jobs, never manual loops**
-   - Schedule: every 1-3 minutes depending on task length
-   - Cron job automatically sends messages (no batching)
-   - AI never blocks, can respond to other requests
+1. **Use isolated session + agentTurn cron jobs**
+   - `sessionTarget: "isolated"` (NOT "main")
+   - `payload.kind: "agentTurn"` (NOT "systemEvent")
+   - `payload.deliver: true` to send results to user
+   - Call `cron wake --mode "now"` after creating job
 
 2. **Monitoring schedule:**
-   - <15 min tasks: cron every 1-2 minutes
-   - 15-60 min tasks: cron every 2-3 minutes
-   - >60 min tasks: cron every 5 minutes
+   - <15 min tasks: cron every 1-2 minutes (60000-120000ms)
+   - 15-60 min tasks: cron every 2-3 minutes (120000-180000ms)
+   - >60 min tasks: cron every 5 minutes (300000ms)
 
 3. **Each cron job execution:**
-   - Check log → Report immediately
+   - Agent runs in isolated session
+   - Check log → Parse → Report to user channel
    - If completed → Final report + delete cron
 
 4. **Never:**
+   - sessionTarget: "main" with payload.kind: "systemEvent" (AI won't act)
    - Blocking wait loops
    - Manual sleep() intervals
    - Batching messages
    - Assuming "it'll be fine"
 
-**If you don't set up a cron job, you WILL go silent. No exceptions.**
+**If you don't set up a cron job with isolated+agentTurn, you WILL go silent. No exceptions.**
 
 ### Scenario 3: Check and Cancel
 **User:** "내 예약 확인해주고 제일 빠른거 취소해줘"
