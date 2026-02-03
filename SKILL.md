@@ -411,209 +411,48 @@ When users make requests in Korean, the AI should:
 4. Reserve train
 5. Confirm with payment reminder
 
-### Scenario 2: Retry Until Success (Old Method - Not Recommended)
+### Scenario 2: Retry Until Success
 **User:** "매진이면 성공할때까지 반복해"
 
-**AI Actions (Old):**
+**AI Actions:**
 1. Search trains
-2. Loop through available trains:
-   - Try to reserve
-   - If sold out, wait 3-5 seconds (rate limiting)
-   - Try next train
-   - Max 10 attempts
-3. Report success or exhaustion
-
-**Problem:** AI has to invoke CLI repeatedly, wasting tokens and session resources.
-
-### Scenario 2-B: Retry Until Success (New Method - Recommended)
-**User:** "매진이면 성공할때까지 반복해"
-
-**AI Actions (New - with Cron Job):**
-1. Search trains
-2. Start background retry process:
+2. Start background retry:
    ```bash
    exec reserve --retry --timeout-minutes 60 --wait-seconds 10 (in background)
    ```
-3. **Immediately create cron job for monitoring (MANDATORY - ISOLATED SESSION):**
+3. Create monitoring cron job (isolated session + agentTurn):
    ```bash
    cron add --job '{
      "schedule": {"kind": "every", "everyMs": 120000},
      "payload": {
        "kind": "agentTurn",
-       "message": "Check SRT retry log and report progress to user",
+       "message": "Check SRT retry log and report progress",
        "deliver": true,
        "channel": "discord"
      },
      "sessionTarget": "isolated",
      "enabled": true
    }'
-   
-   # Wake immediately
-   cron wake --mode "now" --text "Start monitoring"
+   cron wake --mode "now"
    ```
-4. Inform user that monitoring is active:
-   ```
-   "백그라운드로 예약 재시도를 시작했습니다.
-   타임아웃: 60분, 재시도 간격: 10초
-   2분마다 진행 상황을 자동으로 확인해서 알려드리겠습니다."
-   ```
+4. Inform user: "백그라운드 재시도 시작. 2분마다 업데이트합니다."
 
-**Cron Job Behavior:**
-- Runs in **isolated session** with **agentTurn** (actual agent execution)
-- Fires every 2 minutes automatically
-- Each time: checks log, reports progress immediately to user channel
-- On completion: reports final result and deletes itself
-- No blocking, no message batching
+## ⚠️ Background Retry Monitoring
 
-**Benefits:**
-- ✅ AI never blocks (can respond to other messages)
-- ✅ Messages sent immediately by cron job
-- ✅ No Discord streaming issues
-- ✅ Quick detection of success
-- ✅ Automatic cleanup when done
-- ✅ Token efficient (cron job is isolated)
+**MANDATORY:** Use isolated session + agentTurn cron jobs for monitoring `reserve --retry`.
 
-## ⚠️ CRITICAL: Real-Time Monitoring Requirements
-
-**When using `reserve --retry` in background, you MUST report status updates in real-time!**
-
-### 🚨 The Problem
-
-If you check logs but don't send messages until all checks are done, users see nothing until the process completes. This creates:
-- Silent periods of 5-60 minutes
-- No feedback on progress
-- User frustration ("왜 답이 없어?")
-
-### 🔴 MANDATORY: Use Cron Jobs for Monitoring
-
-**AI agents MUST NOT use blocking wait or manual loops for monitoring.**
-
-**WHY:**
-- Blocking wait prevents you from responding to users
-- Manual loops batch messages instead of sending immediately
-- Discord streaming issues may delay message delivery
-
-**SOLUTION: Always use cron jobs with isolated session + agentTurn**
+### Setup
 
 ```bash
-# 1. Start background retry process
+# 1. Start background retry
 exec reserve --retry --timeout-minutes 60 (background)
 
-# 2. Immediately create cron job for monitoring (ISOLATED SESSION + AGENTTURN)
+# 2. Create monitoring cron (isolated + agentTurn)
 cron add --job '{
   "schedule": {"kind": "every", "everyMs": 120000},
   "payload": {
     "kind": "agentTurn",
-    "message": "Check SRT retry progress: run `cd ~/.openclaw/workspace/skills/srt && uv run --with SRTrain python3 scripts/srt_cli.py log -n 30` and parse the latest attempts. Report to main session: (1) attempt count, (2) success/failure status, (3) time remaining if known. If process completed (timeout or success), report final result to main session and delete this cron job.",
-    "deliver": true,
-    "channel": "discord"
-  },
-  "sessionTarget": "isolated",
-  "enabled": true
-}'
-
-# 3. CRITICAL: Send wake event to trigger cron immediately
-cron wake --mode "now" --text "Start SRT monitoring"
-
-# 4. Tell user monitoring is active
-"백그라운드로 예약 재시도를 시작했습니다. 2분마다 진행 상황을 자동으로 확인해서 알려드리겠습니다."
-```
-
-**⚠️ CRITICAL: Session Target and Payload Type**
-
-**MUST use:**
-- `sessionTarget: "isolated"` (NOT "main")
-- `payload.kind: "agentTurn"` (NOT "systemEvent")
-- `payload.deliver: true` to send results back to user
-- `payload.channel: "discord"` (or appropriate channel)
-
-**WHY:**
-- `systemEvent` in main session just injects text - AI doesn't act on it
-- `agentTurn` in isolated session creates actual agent execution
-- `deliver: true` ensures results are sent to the user channel
-
-**Wake Mode:**
-Cron jobs default to `wakeMode: "next-heartbeat"` - always call `cron wake --mode "now"` after creating the job to trigger it immediately.
-
-**Cron job schedule:**
-- **<15 min tasks:** every 1-2 minutes
-- **15-60 min tasks:** every 2-3 minutes
-- **>60 min tasks:** every 5 minutes
-
-**The cron job should:**
-1. Check retry log with `srt_cli.py log -n 30`
-2. Parse latest attempts, success/failure
-3. Report progress immediately to user
-4. Detect completion and send final result
-5. Delete itself when task completes
-
-### ✅ The Correct Pattern
-
-**WRONG ❌:**
-```
-Check at 1 min → (store result)
-Check at 2 min → (store result)
-Check at 3 min → (store result)
-Process ends → Send ALL results at once
-```
-
-**WRONG ❌:**
-```python
-# Manual loop - DON'T DO THIS
-for i in range(5):
-    sleep(60)
-    check_log()
-    # Messages get batched!
-```
-
-**RIGHT ✅:**
-```
-Setup cron job (every 2 min)
-  ↓
-Cron fires at 2 min → Check log → SEND MESSAGE → wait
-  ↓
-Cron fires at 4 min → Check log → SEND MESSAGE → wait
-  ↓
-Cron fires at 6 min → Detect completion → SEND FINAL RESULT → Delete cron
-```
-
-### 📋 Required Message Pattern
-
-**For 5-minute retry tasks:**
-
-```markdown
-[0 min - 12:20] Starting retry for trains 1-9, timeout 5 minutes
-
-[1 min - 12:21] Progress: 6 attempts, all sold out, continuing...
-
-[2 min - 12:22] Progress: 12 attempts, still sold out, 3 min left
-
-[3 min - 12:23] Progress: 18 attempts, all sold out, 2 min left
-
-[4 min - 12:24] Progress: 24 attempts, still sold out, 1 min left
-
-[5 min - 12:25] ⏰ TIMEOUT: 30 attempts total, all failed
-```
-
-**Each message must:**
-1. Include timestamp
-2. Show attempt count
-3. Indicate time remaining
-4. Be sent IMMEDIATELY after check (not batched)
-
-### 🔧 Implementation
-
-**Use cron job with isolated session (MANDATORY):**
-```bash
-# 1. Start background process
-exec reserve --retry --timeout-minutes 60 (background)
-
-# 2. Create cron job immediately (ISOLATED + AGENTTURN)
-cron add --job '{
-  "schedule": {"kind": "every", "everyMs": 120000},
-  "payload": {
-    "kind": "agentTurn",
-    "message": "Check SRT retry: run log command, parse results, report to user. Delete cron if completed.",
+    "message": "Check `srt_cli.py log -n 30`, parse progress, report to user. Delete cron if done.",
     "deliver": true,
     "channel": "discord"
   },
@@ -622,62 +461,23 @@ cron add --job '{
 }'
 
 # 3. Wake immediately
-cron wake --mode "now" --text "Start monitoring"
-
-# 4. Inform user
-"백그라운드 예약 재시도 시작. 2분마다 자동 업데이트합니다."
+cron wake --mode "now"
 ```
 
-**Cron job agentTurn should:**
-- Run `srt_cli.py log -n 30` to check progress
-- Parse: attempt count, success/failure, time remaining
-- Report immediately to user channel (deliver: true)
-- If completed: report final result + delete cron job
-- Agent executes in isolated session (no main session interference)
+### Requirements
 
-**Never do this:**
-```python
-# WRONG - Manual loop with blocking
-for minute in [1, 2, 3, 4, 5]:
-    sleep(60)
-    check_log()
-    # Messages get batched!
+- **sessionTarget:** `"isolated"` (NOT "main")
+- **payload.kind:** `"agentTurn"` (NOT "systemEvent")
+- **payload.deliver:** `true`
+- **Schedule:** Every 1-3 minutes depending on task duration
+- **Wake:** Always call `cron wake --mode "now"` after creating job
 
-# WRONG - Storing results
-results = []
-for minute in [1, 2, 3, 4, 5]:
-    results.append(check_log())
-send_all_messages(results)  # All at once - BAD!
-```
+### Why
 
-### 📝 Summary
+- `systemEvent` in main session doesn't trigger agent action
+- `agentTurn` in isolated session actually executes and reports
+- Prevents blocking, message batching, and silent monitoring
 
-**MANDATORY for all background retry tasks:**
-
-1. **Use isolated session + agentTurn cron jobs**
-   - `sessionTarget: "isolated"` (NOT "main")
-   - `payload.kind: "agentTurn"` (NOT "systemEvent")
-   - `payload.deliver: true` to send results to user
-   - Call `cron wake --mode "now"` after creating job
-
-2. **Monitoring schedule:**
-   - <15 min tasks: cron every 1-2 minutes (60000-120000ms)
-   - 15-60 min tasks: cron every 2-3 minutes (120000-180000ms)
-   - >60 min tasks: cron every 5 minutes (300000ms)
-
-3. **Each cron job execution:**
-   - Agent runs in isolated session
-   - Check log → Parse → Report to user channel
-   - If completed → Final report + delete cron
-
-4. **Never:**
-   - sessionTarget: "main" with payload.kind: "systemEvent" (AI won't act)
-   - Blocking wait loops
-   - Manual sleep() intervals
-   - Batching messages
-   - Assuming "it'll be fine"
-
-**If you don't set up a cron job with isolated+agentTurn, you WILL go silent. No exceptions.**
 
 ### Scenario 3: Check and Cancel
 **User:** "내 예약 확인해주고 제일 빠른거 취소해줘"
@@ -776,16 +576,13 @@ For issues or questions:
 
 ## Version History
 
-- **0.1.4** - Major improvements to retry and monitoring
-  - Unified `reserve` command with `--retry` flag (removed separate `reserve-retry` command)
+- **0.1.3** - Retry improvements and monitoring requirements
+  - Unified `reserve` command with `--retry` flag
   - Added `--timeout-minutes` for time-based retry limits (default: 60)
   - Added `--train-id` support for comma-separated multiple trains (e.g., "1,3,5")
   - Changed `--wait-seconds` default from 20 to 10 seconds
-  - **⚠️ CRITICAL:** Added real-time monitoring requirements for AI agents
-  - Detailed AI monitoring guide with correct/incorrect patterns
-- **0.1.3** - Include sold-out trains by default
-  - Search now includes sold-out trains by default (`available_only=False`)
-  - Removed `--all` flag (no longer needed)
+  - Search includes sold-out trains by default (`available_only=False`)
+  - **Monitoring:** Isolated session + agentTurn cron jobs required for background retry
 - **0.1.2** - Add `--all` flag for sold-out trains (deprecated)
 - **0.1.1** - Use `uv` for dependency management
   - Replace venv/pip with `uv run --with SRTrain`
