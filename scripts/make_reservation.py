@@ -152,13 +152,24 @@ def make_reservation_with_retry(credentials, args):
     logger = RetryLogger() if args.retry else None
     
     if args.retry:
-        logger.log("=== SRT 예약 시작 (재시도 모드) ===", "INFO")
+        # Get route info from first train
+        first_train = trains[0]
+        dep_station = first_train.dep_station_name
+        arr_station = first_train.arr_station_name
+        
+        logger.log("=" * 60, "INFO")
+        logger.log("SRT 예약 재시도 시작", "INFO")
+        logger.log("=" * 60, "INFO")
+        logger.log(f"출발역: {dep_station}", "INFO")
+        logger.log(f"도착역: {arr_station}", "INFO")
         logger.log(f"타임아웃: {args.timeout_minutes}분", "INFO")
         logger.log(f"재시도 간격: {args.wait_seconds}초", "INFO")
         if args.train_id:
             logger.log(f"대상 열차: {args.train_id} (총 {len(trains)}개)", "INFO")
         else:
             logger.log(f"대상 열차: 전체 (총 {len(trains)}개)", "INFO")
+        logger.log(f"시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "INFO")
+        logger.log("=" * 60, "INFO")
     
     # Calculate timeout
     start_time = time.time()
@@ -223,6 +234,20 @@ def make_reservation_with_retry(credentials, args):
         
         # Move to next train
         train_index += 1
+        
+        # Periodic status summary (every 10 attempts)
+        if args.retry and attempt % 10 == 0:
+            elapsed = time.time() - start_time
+            elapsed_min = int(elapsed / 60)
+            remaining_min = args.timeout_minutes - elapsed_min
+            logger.log("", "INFO")
+            logger.log("=" * 60, "INFO")
+            logger.log(f"📊 진행 상황 요약 (시도 #{attempt})", "INFO")
+            logger.log(f"경과 시간: {elapsed_min}분", "INFO")
+            logger.log(f"남은 시간: {remaining_min}분", "INFO")
+            logger.log(f"결과: 모든 시도 실패 (좌석 없음)", "INFO")
+            logger.log("=" * 60, "INFO")
+            logger.log("", "INFO")
         
         # If not in retry mode, fail immediately
         if not args.retry:
