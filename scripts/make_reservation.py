@@ -18,6 +18,7 @@ from utils import (
     format_reservation_info,
     load_search_results,
     get_data_dir,
+    validate_safe_path,
     RateLimiter
 )
 
@@ -29,7 +30,8 @@ class RetryLogger:
         if log_file is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_file = get_data_dir() / f'reserve_{timestamp}.log'
-        self.log_file = Path(log_file)
+        # Validate path is within safe boundaries before writing
+        self.log_file = validate_safe_path(Path(log_file))
         # Restrict log file permissions (owner read/write only)
         self.log_file.touch(exist_ok=True)
         os.chmod(self.log_file, 0o600)

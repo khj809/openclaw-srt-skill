@@ -12,17 +12,45 @@ import tempfile
 from pathlib import Path
 
 
+def _safe_roots() -> list:
+    """Return allowed base directories for path validation."""
+    return [
+        Path.home().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+
+
+def validate_safe_path(path: Path) -> Path:
+    """
+    Ensure path resolves to within the user's home dir or system temp dir.
+    Raises ValueError on path traversal attempts.
+    """
+    resolved = Path(path).resolve()
+    for root in _safe_roots():
+        try:
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+    raise ValueError(
+        f"경로 '{path}'는 허용된 범위를 벗어났습니다. "
+        f"홈 디렉토리 또는 시스템 임시 디렉토리 내에서만 사용 가능합니다."
+    )
+
+
 def get_data_dir() -> Path:
     """
     Return the directory used for SRT data files (logs, cache, rate-limit state).
 
     Override by setting SRT_DATA_DIR in the environment.
     Defaults to a 'srt' subdirectory under the system temp dir.
+    Path is validated to prevent traversal outside safe roots.
     """
     custom = os.environ.get('SRT_DATA_DIR')
     base = Path(custom) if custom else Path(tempfile.gettempdir()) / 'srt'
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+    validated = validate_safe_path(base)
+    validated.mkdir(parents=True, exist_ok=True)
+    return validated
 
 
 class RateLimiter:

@@ -4,8 +4,10 @@ Main CLI router for SRT skill.
 Routes commands to appropriate tool modules.
 """
 
+import os
 import sys
 import argparse
+from pathlib import Path
 
 
 def main():
@@ -57,6 +59,11 @@ def main():
     log_parser.add_argument('--lines', '-n', type=int, default=20,
                             help='표시할 라인 수 (기본값: 20)')
 
+    # Stop retry process command (safe alternative to shell kill $(cat pid_file))
+    stop_parser = subparsers.add_parser('stop', help='백그라운드 예약 재시도 프로세스 종료')
+    stop_parser.add_argument('--pid-file', required=True,
+                             help='PID 파일 경로 (make_reservation.py --retry 실행 시 저장한 파일)')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -80,6 +87,27 @@ def main():
         elif args.command == 'cancel':
             from cancel_booking import run
             run(args)
+
+        elif args.command == 'stop':
+            import signal
+            from utils import validate_safe_path
+            pid_file = validate_safe_path(Path(args.pid_file))
+            if not pid_file.exists():
+                print(f"❌ PID 파일이 없습니다: {pid_file}")
+                sys.exit(1)
+            raw = pid_file.read_text().strip()
+            if not raw.isdigit():
+                print(f"❌ PID 파일 내용이 유효하지 않습니다: {raw!r}")
+                sys.exit(1)
+            pid = int(raw)
+            try:
+                os.kill(pid, signal.SIGTERM)
+                print(f"✅ 프로세스 {pid} 종료 요청 완료")
+            except ProcessLookupError:
+                print(f"⚠️  프로세스 {pid}는 이미 종료되어 있습니다")
+            except PermissionError:
+                print(f"❌ 프로세스 {pid} 종료 권한 없음")
+                sys.exit(1)
 
         elif args.command == 'log':
             from check_retry_log import tail_log

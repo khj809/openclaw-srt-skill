@@ -91,6 +91,8 @@ echo $! > "$PID_FILE"
 The script prints `LOG_FILE: <path>` on startup — capture this to know exactly where logs are written.
 You may also set `SRT_DATA_DIR` to control where auto-generated logs and cache files are placed.
 
+> **Path safety:** `SRT_DATA_DIR` and `--log-file` are validated at runtime to resolve within the user's home directory or system temp dir only. Paths that escape these boundaries (e.g. via `../`) are rejected.
+
 **`make_reservation.py` options:**
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -109,9 +111,9 @@ Log markers to watch for:
 Create an **isolated agentTurn** cron job (every 15 min) that:
 1. Checks process status:
    ```bash
-   PID=$(cat <pid_file> 2>/dev/null)
-   kill -0 "$PID" 2>/dev/null && echo "RUNNING" || echo "NOT_RUNNING"
+   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py stop --pid-file <pid_file> 2>&1 | grep -q "이미 종료" && echo "NOT_RUNNING" || (kill -0 $(cat <pid_file> 2>/dev/null) 2>/dev/null && echo "RUNNING" || echo "NOT_RUNNING")
    ```
+   Or simply check if PID is alive: `kill -0 $(cat <pid_file>) 2>/dev/null && echo RUNNING || echo NOT_RUNNING`
 2. Reads log tail: `tail -50 <log_file>`
 3. Parses attempt count and last attempt time from log
 4. Reports to channel
@@ -122,7 +124,11 @@ The cron job's task message must include its own job ID (update after creation) 
 
 ### Step 4: Create termination job
 Create an **isolated agentTurn** `at`-schedule cron job at the end time that:
-1. Kills the process: `kill $(cat <pid_file>)`
+1. Stops the process safely (never use `kill $(cat ...)` — use the dedicated stop command):
+   ```bash
+   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py stop --pid-file <pid_file>
+   ```
+   The `stop` command validates the PID file contains only a numeric PID before sending SIGTERM.
 2. Removes the reporting cron job by ID
 3. Reads final log and reports outcome
 

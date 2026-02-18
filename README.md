@@ -82,7 +82,7 @@ clawhub login
 clawhub publish . \
   --slug srt \
   --name "SRT Korean Train Service" \
-  --version 0.1.3 \
+  --version 1.0.0 \
   --tags latest
 ```
 
