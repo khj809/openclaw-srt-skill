@@ -88,6 +88,14 @@ clawhub publish . \
 
 ## Version History
 
+- **1.0.0** — Security hardening + SKILL.md refactor
+  - Replace `pickle` with JSON for search result caching (removes RCE-class deserialization risk)
+  - Add `os.chmod(0o600)` on all created files (log, cache, rate-limit state)
+  - Add `get_data_dir()` via `SRT_DATA_DIR` env var — removes hardcoded `~/.openclaw/tmp/srt` path
+  - Add `--log-file` arg to `make_reservation.py`; prints `LOG_FILE: <path>` at startup
+  - Add `requires.env` metadata for `SRT_PHONE`/`SRT_PASSWORD` (fixes ClawHub security scan mismatch)
+  - Add SRTrain PyPI/GitHub source URL to install spec
+  - Compact `SKILL.md`: add Continuous Monitoring architecture, remove non-skill content
 - **0.1.3** — Add `make_reservation.py --retry` for continuous monitoring; add `check_retry_log.py`
 - **0.1.2** — Add `--all` flag for sold-out trains
 - **0.1.1** — Use `uv` for dependency management
