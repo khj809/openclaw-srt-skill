@@ -4,6 +4,7 @@ Make reservation tool for SRT skill.
 Reserves trains with automatic retry support.
 """
 
+import os
 import sys
 import argparse
 import time
@@ -16,6 +17,7 @@ from utils import (
     output_json,
     format_reservation_info,
     load_search_results,
+    get_data_dir,
     RateLimiter
 )
 
@@ -25,11 +27,15 @@ class RetryLogger:
     
     def __init__(self, log_file=None):
         if log_file is None:
-            log_dir = Path.home() / '.openclaw' / 'tmp' / 'srt'
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = log_dir / 'reserve.log'
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_file = get_data_dir() / f'reserve_{timestamp}.log'
         self.log_file = Path(log_file)
-        
+        # Restrict log file permissions (owner read/write only)
+        self.log_file.touch(exist_ok=True)
+        os.chmod(self.log_file, 0o600)
+        # Print log path so callers can capture it
+        print(f"LOG_FILE: {self.log_file}", flush=True)
+
     def log(self, message, level="INFO"):
         """Log message to file and stdout"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -128,8 +134,8 @@ def make_reservation_with_retry(credentials, args):
     Returns:
         0 on success, 1 on retryable failure, 2 on fatal error
     """
-    # Load search results
-    all_trains = load_search_results()
+    # Load search results (performs a fresh live search using cached params)
+    all_trains = load_search_results(credentials)
     if not all_trains:
         print("❌ 검색 결과를 찾을 수 없습니다. 먼저 'search' 명령으로 열차를 검색해주세요.", file=sys.stderr)
         return 2
@@ -149,7 +155,7 @@ def make_reservation_with_retry(credentials, args):
     
     # Setup
     limiter = RateLimiter()
-    logger = RetryLogger() if args.retry else None
+    logger = RetryLogger(log_file=getattr(args, 'log_file', None)) if args.retry else None
     
     if args.retry:
         # Get route info from first train
@@ -245,7 +251,7 @@ def make_reservation_with_retry(credentials, args):
             logger.log(f"📊 진행 상황 요약 (시도 #{attempt})", "INFO")
             logger.log(f"경과 시간: {elapsed_min}분", "INFO")
             logger.log(f"남은 시간: {remaining_min}분", "INFO")
-            logger.log(f"결과: 모든 시도 실패 (좌석 없음)", "INFO")
+            logger.log("결과: 모든 시도 실패 (좌석 없음)", "INFO")
             logger.log("=" * 60, "INFO")
             logger.log("", "INFO")
         
@@ -288,6 +294,8 @@ def main():
                         help='최대 시도 시간 (분, 기본값: 60)')
     parser.add_argument('--wait-seconds', type=int, default=10,
                         help='재시도 대기 시간 (초, 기본값: 10)')
+    parser.add_argument('--log-file', type=str, default=None,
+                        help='로그 파일 경로 (기본값: SRT_DATA_DIR 또는 시스템 temp 디렉토리 하위 자동 생성)')
     
     args = parser.parse_args()
     
