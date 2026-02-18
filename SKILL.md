@@ -111,9 +111,9 @@ Log markers to watch for:
 Create an **isolated agentTurn** cron job (every 15 min) that:
 1. Checks process status:
    ```bash
-   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py stop --pid-file <pid_file> 2>&1 | grep -q "이미 종료" && echo "NOT_RUNNING" || (kill -0 $(cat <pid_file> 2>/dev/null) 2>/dev/null && echo "RUNNING" || echo "NOT_RUNNING")
+   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py status --pid-file <pid_file>
    ```
-   Or simply check if PID is alive: `kill -0 $(cat <pid_file>) 2>/dev/null && echo RUNNING || echo NOT_RUNNING`
+   Outputs `RUNNING (<pid>)` or `NOT_RUNNING (...)` — no shell command substitution involved.
 2. Reads log tail: `tail -50 <log_file>`
 3. Parses attempt count and last attempt time from log
 4. Reports to channel
@@ -124,11 +124,10 @@ The cron job's task message must include its own job ID (update after creation) 
 
 ### Step 4: Create termination job
 Create an **isolated agentTurn** `at`-schedule cron job at the end time that:
-1. Stops the process safely (never use `kill $(cat ...)` — use the dedicated stop command):
+1. Stops the process:
    ```bash
    cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py stop --pid-file <pid_file>
    ```
-   The `stop` command validates the PID file contains only a numeric PID before sending SIGTERM.
 2. Removes the reporting cron job by ID
 3. Reads final log and reports outcome
 

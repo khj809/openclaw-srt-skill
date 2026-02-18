@@ -64,6 +64,11 @@ def main():
     stop_parser.add_argument('--pid-file', required=True,
                              help='PID 파일 경로 (make_reservation.py --retry 실행 시 저장한 파일)')
 
+    # Status check command (safe alternative to kill -0 $(cat pid_file))
+    status_parser = subparsers.add_parser('status', help='백그라운드 예약 재시도 프로세스 상태 확인')
+    status_parser.add_argument('--pid-file', required=True,
+                               help='PID 파일 경로')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -87,6 +92,26 @@ def main():
         elif args.command == 'cancel':
             from cancel_booking import run
             run(args)
+
+        elif args.command == 'status':
+            import signal
+            from utils import validate_safe_path
+            pid_file = validate_safe_path(Path(args.pid_file))
+            if not pid_file.exists():
+                print("NOT_RUNNING (PID 파일 없음)")
+                sys.exit(0)
+            raw = pid_file.read_text().strip()
+            if not raw.isdigit():
+                print(f"ERROR: PID 파일 내용이 유효하지 않습니다: {raw!r}")
+                sys.exit(1)
+            pid = int(raw)
+            try:
+                os.kill(pid, 0)  # signal 0 = existence check only, no kill
+                print(f"RUNNING ({pid})")
+            except ProcessLookupError:
+                print(f"NOT_RUNNING (PID {pid} 종료됨)")
+            except PermissionError:
+                print(f"RUNNING ({pid}, 권한 없음으로 신호 전송 불가)")
 
         elif args.command == 'stop':
             import signal
