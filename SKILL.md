@@ -40,27 +40,27 @@ metadata:
 
 ## Commands
 
-### Search
+### Search Trains
 ```bash
-cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py search \
+cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py train search \
   --departure "수서" --arrival "동대구" --date "20260227" --time "200000"
 ```
 Search params and results are cached (in `SRT_DATA_DIR`) and required by `reserve`.
 
 ### Reserve (one-shot)
 ```bash
-cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
+cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py reserve one-shot --train-id "1"
 ```
-`--train-id` is the 1-based index from search results. Must run `search` first.
+`--train-id` is the 1-based index from search results. Must run `train search` first.
 
-### View Bookings
+### View Reservations
 ```bash
-cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py list --format json
+cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py reserve list --format json
 ```
 
-### Cancel
+### Cancel Reservation
 ```bash
-cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py cancel \
+cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py reserve cancel \
   --reservation-id "RES123456" --confirm
 ```
 
@@ -69,11 +69,11 @@ cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py cancel \
 ## Continuous Monitoring (취소표 모니터링)
 
 For "keep trying until a seat opens" requests, **do not loop inside a cron job**.
-Instead: run `make_reservation.py --retry` as a persistent background process, then create a separate cron job to read the log and report.
+Instead: run `srt_cli.py reserve retry` as a persistent background process, then create a separate cron job to read the log and report.
 
 ### Step 1: Search (populate cache)
 ```bash
-cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py search \
+cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py train search \
   --departure "수서" --arrival "동대구" --date "20260227" --time "200000"
 ```
 Note the `train_id` of the target train from the results.
@@ -82,8 +82,8 @@ Note the `train_id` of the target train from the results.
 ```bash
 LOG_FILE=<choose_any_path>.log
 PID_FILE=<choose_any_path>.pid
-cd <project_dir> && nohup uv run --with SRTrain python3 scripts/make_reservation.py \
-  --train-id <id> --retry --timeout-minutes 1440 --wait-seconds 10 \
+cd <project_dir> && nohup uv run --with SRTrain python3 scripts/srt_cli.py reserve retry \
+  --train-id <id> --timeout-minutes 1440 --wait-seconds 10 \
   --log-file "$LOG_FILE" > /dev/null 2>&1 &
 echo $! > "$PID_FILE"
 ```
@@ -93,11 +93,10 @@ You may also set `SRT_DATA_DIR` to control where auto-generated logs and cache f
 
 > **Path safety:** `SRT_DATA_DIR` and `--log-file` are validated at runtime to resolve within the user's home directory or system temp dir only. Paths that escape these boundaries (e.g. via `../`) are rejected.
 
-**`make_reservation.py` options:**
+**`reserve retry` options:**
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--train-id` | (all) | 1-based index from search; comma-separated for multiple |
-| `--retry` | false | Enable continuous retry mode |
 | `--timeout-minutes` | 60 | Total duration. Use 1440 for 24h |
 | `--wait-seconds` | 10 | Delay between attempts |
 | `--log-file` | auto | Explicit log file path (overrides `SRT_DATA_DIR` default) |
@@ -111,7 +110,7 @@ Log markers to watch for:
 Create an **isolated agentTurn** cron job (every 15 min) that:
 1. Checks process status:
    ```bash
-   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py status --pid-file <pid_file>
+   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py reserve status --pid-file <pid_file>
    ```
    Outputs `RUNNING (<pid>)` or `NOT_RUNNING (...)` — no shell command substitution involved.
 2. Reads log tail: `tail -50 <log_file>`
@@ -126,7 +125,7 @@ The cron job's task message must include its own job ID (update after creation) 
 Create an **isolated agentTurn** `at`-schedule cron job at the end time that:
 1. Stops the process:
    ```bash
-   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py stop --pid-file <pid_file>
+   cd <project_dir> && uv run --with SRTrain python3 scripts/srt_cli.py reserve stop --pid-file <pid_file>
    ```
 2. Removes the reporting cron job by ID
 3. Reads final log and reports outcome
@@ -188,10 +187,10 @@ Extract from Korean input:
 - Passenger count → default 1 if not specified
 
 **Patterns:**
-- "검색해줘" → `search`
-- "예약해줘" (one-shot) → `search` then `reserve`
+- "검색해줘" → `train search`
+- "예약해줘" (one-shot) → `train search` then `reserve one-shot`
 - "취소표 나오면 잡아줘 / 될 때까지 돌려줘" → Continuous Monitoring flow above
-- "내 예약 확인해줘" → `list`
+- "내 예약 확인해줘" → `reserve list`
 - "취소해줘" → `list` then `cancel`
 
 ## Payment Note

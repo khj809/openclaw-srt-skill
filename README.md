@@ -1,4 +1,4 @@
-# SRT Korean Train Service - OpenClaw Skill
+# OpenClaw SRT Skill
 
 OpenClaw skill for managing Korean SRT (Super Rapid Train) reservations — search, booking, continuous monitoring, and cancellation.
 
@@ -40,38 +40,34 @@ openclaw-srt-skill/
 ├── README.md                 # This file
 ├── requirements.txt
 └── scripts/
-    ├── srt_cli.py            # CLI router (search / reserve / list / cancel)
-    ├── search_trains.py      # Search implementation
-    ├── make_reservation.py   # Reservation with --retry support
-    ├── check_retry_log.py    # Log tail utility for monitoring
-    ├── view_bookings.py      # Bookings viewer
-    ├── cancel_booking.py     # Cancellation
-    └── utils.py              # Shared utilities
+    ├── srt_cli.py            # CLI router — pure dispatcher, no business logic
+    ├── train.py              # Train search + fetch_trains_from_cache()
+    ├── reserve.py            # All reservation logic (one-shot, retry, list, cancel, status, stop, log)
+    └── utils.py              # Shared utilities (credentials, path safety, rate limiting, formatting)
 ```
 
 ## Direct CLI Usage
 
 ```bash
 # Search
-uv run --with SRTrain python3 scripts/srt_cli.py search \
+uv run --with SRTrain python3 scripts/srt_cli.py train search \
   --departure "수서" --arrival "부산" --date "20260227" --time "140000"
 
-# Reserve
-uv run --with SRTrain python3 scripts/srt_cli.py reserve --train-id "1"
+# Reserve (one-shot)
+uv run --with SRTrain python3 scripts/srt_cli.py reserve one-shot --train-id "1"
 
 # Continuous retry (background)
-nohup uv run --with SRTrain python3 scripts/make_reservation.py \
-  --train-id 1 --retry --timeout-minutes 1440 --wait-seconds 10 \
-  > ~/.openclaw/tmp/srt/srt369_retry.log 2>&1 &
+nohup uv run --with SRTrain python3 scripts/srt_cli.py reserve retry \
+  --train-id 1 --timeout-minutes 1440 --wait-seconds 10 &
 
 # Check retry log
-python3 scripts/check_retry_log.py --log-file ~/.openclaw/tmp/srt/srt369_retry.log --lines 30
+uv run --with SRTrain python3 scripts/srt_cli.py reserve log -n 30
 
 # View bookings
-uv run --with SRTrain python3 scripts/srt_cli.py list
+uv run --with SRTrain python3 scripts/srt_cli.py reserve list
 
 # Cancel
-uv run --with SRTrain python3 scripts/srt_cli.py cancel \
+uv run --with SRTrain python3 scripts/srt_cli.py reserve cancel \
   --reservation-id "RES123456" --confirm
 ```
 
@@ -81,13 +77,20 @@ uv run --with SRTrain python3 scripts/srt_cli.py cancel \
 clawhub login
 clawhub publish . \
   --slug srt \
-  --name "SRT Korean Train Service" \
-  --version 1.0.0 \
+  --name "SRT" \
+  --version 1.1.0 \
   --tags latest
 ```
 
 ## Version History
 
+- **1.1.0** — CLI restructure + codebase consolidation
+  - Rename `search_trains.py` → `train.py`; consolidate `make_reservation.py`, `view_bookings.py`, `cancel_booking.py`, `check_retry_log.py` → `reserve.py`
+  - All reservation logic (`run_one_shot`, `run_retry`, `run_list`, `run_cancel`, `run_status`, `run_stop`, `run_log`) lives in `reserve.py`
+  - Extract `fetch_trains_from_cache()` into `train.py`; delegates to `search_trains()` — removes duplicate SRT API call
+  - `utils.load_search_results()` replaced by `load_search_cache()` (file I/O only; no SRT calls)
+  - `srt_cli.py` is now a pure router with no inline business logic
+  - Update SKILL.md: remove `make_reservation.py` references; fix `reserve retry` option table
 - **1.0.0** — Security hardening + SKILL.md refactor
   - Replace `pickle` with JSON for search result caching (removes RCE-class deserialization risk)
   - Add `os.chmod(0o600)` on all created files (log, cache, rate-limit state)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Search trains tool for SRT skill.
-Searches for available trains between stations.
+Train-related tools for SRT skill.
+Covers search and any future train query operations.
 """
 
 import sys
@@ -13,9 +13,60 @@ from utils import (
     format_train_info,
     print_table,
     save_search_results,
+    load_search_cache,
     RateLimiter,
     wait_with_message
 )
+
+
+def fetch_trains_from_cache(credentials=None):
+    """
+    Re-hydrate cached search results as live SRT train objects.
+    Loads cached search params, delegates actual search to search_trains(),
+    then filters results to the originally cached train numbers.
+
+    Args:
+        credentials: dict with phone and password (loaded automatically if None)
+
+    Returns:
+        list: Live SRT train objects, or None if cache is missing / search fails.
+    """
+    cache = load_search_cache()
+    if not cache:
+        print("❌ 캐시에 검색 정보가 없습니다. 먼저 'train search' 명령으로 열차를 검색해주세요.",
+              file=sys.stderr)
+        return None
+
+    params = cache.get('search_params', {})
+    cached_numbers = [t['train_number'] for t in cache.get('trains', [])]
+
+    if not params.get('departure') or not params.get('arrival') or not params.get('date'):
+        print("❌ 캐시에 검색 파라미터가 없습니다. 다시 'train search'를 실행해주세요.",
+              file=sys.stderr)
+        return None
+
+    if credentials is None:
+        credentials = load_credentials()
+
+    # Build a minimal args namespace so search_trains() can be reused as-is
+    search_args = argparse.Namespace(
+        departure=params['departure'],
+        arrival=params['arrival'],
+        date=params['date'],
+        time=params.get('time', '000000'),
+        passengers=None,
+    )
+
+    try:
+        trains = search_trains(credentials, search_args)
+        if cached_numbers:
+            train_map = {t.train_number: t for t in trains}
+            filtered = [train_map[n] for n in cached_numbers if n in train_map]
+            return filtered if filtered else trains
+        return trains
+    except Exception as e:
+        print(f"⚠️  Warning: Re-search failed: {e}", file=sys.stderr)
+        return None
 
 
 def search_trains(credentials, args):

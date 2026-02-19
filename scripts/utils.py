@@ -393,55 +393,18 @@ def save_search_results(trains, search_args=None):
         print(f"⚠️  Warning: Could not save search results: {e}", file=sys.stderr)
 
 
-def load_search_results(credentials=None):
+def load_search_cache():
     """
-    Load previously cached search results by performing a fresh SRT search.
-    Uses cached search params to re-query live data; avoids unsafe deserialization.
-
-    Args:
-        credentials: dict with phone and password (loaded automatically if None)
-
-    Returns:
-        list: Live SRT train objects filtered to cached train numbers, or None if unavailable.
+    Load previously cached search metadata from disk.
+    Returns raw cache dict with 'search_params' and 'trains' keys, or None if unavailable.
+    Does NOT make any SRT API calls — use train.fetch_trains_from_cache() for live data.
     """
     cache_file = get_data_dir() / 'last_search.json'
-
     if not cache_file.exists():
         return None
-
     try:
         with open(cache_file, 'r', encoding='utf-8') as f:
-            cache = json.load(f)
+            return json.load(f)
     except Exception as e:
         print(f"⚠️  Warning: Could not load search cache: {e}", file=sys.stderr)
-        return None
-
-    params = cache.get('search_params', {})
-    cached_numbers = [t['train_number'] for t in cache.get('trains', [])]
-
-    if not params.get('departure') or not params.get('arrival') or not params.get('date'):
-        print("❌ 캐시에 검색 정보가 없습니다. 먼저 'search' 명령으로 열차를 검색해주세요.", file=sys.stderr)
-        return None
-
-    if credentials is None:
-        credentials = load_credentials()
-
-    try:
-        from SRT import SRT
-        srt = SRT(credentials['phone'], credentials['password'])
-        trains = srt.search_train(
-            dep=params['departure'],
-            arr=params['arrival'],
-            date=params['date'],
-            time=params.get('time', '000000'),
-            available_only=False
-        )
-
-        if cached_numbers:
-            train_map = {t.train_number: t for t in trains}
-            filtered = [train_map[n] for n in cached_numbers if n in train_map]
-            return filtered if filtered else trains
-        return trains
-    except Exception as e:
-        print(f"⚠️  Warning: Re-search failed: {e}", file=sys.stderr)
         return None
