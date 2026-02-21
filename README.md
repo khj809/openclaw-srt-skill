@@ -78,12 +78,16 @@ clawhub login
 clawhub publish . \
   --slug srt \
   --name "SRT" \
-  --version 1.1.0 \
+  --version 1.1.1 \
   --tags latest
 ```
 
 ## Version History
 
+- **1.1.1** — Fix cron delivery for isolated sessions
+  - Replace `--announce` delivery with `--no-deliver` + explicit `message` tool call
+  - Avoids `gateway closed (1008): pairing required` error in isolated cron sessions
+  - Update SKILL.md Step 3/4 with CLI-based cron examples and delivery guidance
 - **1.1.0** — CLI restructure + codebase consolidation
   - Rename `search_trains.py` → `train.py`; consolidate `make_reservation.py`, `view_bookings.py`, `cancel_booking.py`, `check_retry_log.py` → `reserve.py`
   - All reservation logic (`run_one_shot`, `run_retry`, `run_list`, `run_cancel`, `run_status`, `run_stop`, `run_log`) lives in `reserve.py`
